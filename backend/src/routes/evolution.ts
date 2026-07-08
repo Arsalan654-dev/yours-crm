@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getEvolutionStatus, connectEvolutionInstance, logoutEvolutionInstance } from '../controllers/evolutionController';
+import { getEvolutionStatus, connectEvolutionInstance, logoutEvolutionInstance, sendMessage } from '../controllers/evolutionController';
 import { authenticateToken } from '../middlewares/authMiddleware';
 
 const router = Router();
@@ -14,5 +14,7 @@ router.get('/connect/:clientId', connectEvolutionInstance);
 
 // Logout / force disconnect the instance
 router.delete('/logout/:clientId', logoutEvolutionInstance);
+
+router.post('/send-message', authenticateToken, sendMessage);
 
 export default router;

@@ -127,3 +127,32 @@ export const logoutEvolutionInstance = async (req: Request, res: Response) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
+export const sendMessage = async (req: Request, res: Response) => {
+  try {
+    const { clientId, phoneNumber, text } = req.body;
+    if (!clientId || !phoneNumber || !text) {
+      return res.status(400).json({ error: 'clientId, phoneNumber and text are required' });
+    }
+
+    const client = await prisma.client.findUnique({ where: { id: clientId } });
+    if (!client || !client.instanceName || !client.evolutionApiUrl || !client.evolutionApiKey) {
+      return res.status(404).json({ error: 'Client or Evolution config not found' });
+    }
+
+    const payload = {
+      number: phoneNumber, // e.g., "5511999999999"
+      text: text,
+      delay: 1000,
+    };
+
+    const url = `${client.evolutionApiUrl}/message/sendText/${client.instanceName}`;
+    const response = await axios.post(url, payload, {
+      headers: { 'apikey': client.evolutionApiKey, 'Content-Type': 'application/json' },
+    });
+
+    res.json({ success: true, data: response.data });
+  } catch (error: any) {
+    console.error('Send message error:', error.response?.data || error.message);
+    res.status(500).json({ error: 'Failed to send message' });
+  }
+};

@@ -12,6 +12,8 @@ import orderRoutes from './routes/orderRoutes';
 import teamRoutes from './routes/teamRoutes';
 import financialRoutes from './routes/financialRoutes';
 import settingRoutes from './routes/settingRoutes';
+import internalRoutes from './routes/internalRoutes';
+
 
 import { startScheduleService } from './services/scheduleService';
 import './cron/subscriptionExpiry'; // Initialize cron jobs
@@ -34,6 +36,7 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/team', teamRoutes);
 app.use('/api/financials', financialRoutes);
 app.use('/api/settings', settingRoutes);
+app.use('/api/internal', internalRoutes);
 
 
 // Start Automated Background Services
