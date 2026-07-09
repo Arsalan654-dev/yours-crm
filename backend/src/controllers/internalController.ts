@@ -26,7 +26,10 @@ export const getMessages = async (req: Request, res: Response) => {
   const apiKey = req.headers['x-api-key'];
   if (apiKey !== INTERNAL_API_KEY) return res.status(401).json({ error: 'Invalid API key' });
 
-  const { leadId } = req.params;
+  const leadIdParam = req.params.leadId;
+  const leadId = Array.isArray(leadIdParam) ? leadIdParam[0] : leadIdParam;
+  if (!leadId) return res.status(400).json({ error: 'Invalid leadId' });
+
   const messages = await prisma.message.findMany({
     where: { leadId },
     orderBy: { createdAt: 'asc' },
