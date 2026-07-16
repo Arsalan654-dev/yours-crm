@@ -12,17 +12,19 @@ import orderRoutes from './routes/orderRoutes';
 import teamRoutes from './routes/teamRoutes';
 import financialRoutes from './routes/financialRoutes';
 import settingRoutes from './routes/settingRoutes';
-import internalRoutes from './routes/internalRoutes';
-
+import productRoutes from './routes/productRoutes';
+import contactRoutes from './routes/contactRoutes';
+import invoiceRoutes from './routes/invoiceRoutes';
+import botRoutes from './routes/botRoutes';
 
 import { startScheduleService } from './services/scheduleService';
-import './cron/subscriptionExpiry'; // Initialize cron jobs
+import './cron/subscriptionExpiry';
 
 dotenv.config();
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '25mb' }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Routes
@@ -36,10 +38,13 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/team', teamRoutes);
 app.use('/api/financials', financialRoutes);
 app.use('/api/settings', settingRoutes);
-app.use('/api/internal', internalRoutes);
 
+// NEW
+app.use('/api/products', productRoutes);
+app.use('/api/contacts', contactRoutes);
+app.use('/api/invoice', invoiceRoutes);
+app.use('/api/bot', botRoutes); // n8n-facing: /api/bot/context, /api/bot/check-whitelist, /api/bot/product-lookup
 
-// Start Automated Background Services
 startScheduleService();
 
 app.get('/api/health', (req, res) => {

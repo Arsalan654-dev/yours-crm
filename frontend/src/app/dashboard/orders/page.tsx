@@ -1,18 +1,29 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ShoppingCart, CheckCircle, Clock, XCircle, Search, Edit2 } from 'lucide-react';
-import moment from 'moment';
+import { ShoppingCart, CheckCircle, Clock, XCircle, Search, Edit2, FileText } from 'lucide-react';
+
+type Order = {
+  id: string;
+  name: string;
+  phoneNumber: string;
+  products: string;
+  address?: string;
+  companyName?: string;
+  createdAt: string;
+  client?: { ownerName?: string; companyName?: string } | null;
+  distanceKm?: number | null;
+  total?: number | null;
+  deliveryCharge?: number | null;
+  invoiceUrl?: string | null;
+  status: string;
+};
 
 export default function OrdersPage() {
-  const [orders, setOrders] = useState<any[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [editingOrder, setEditingOrder] = useState<any>(null);
-
-  useEffect(() => {
-    fetchOrders();
-  }, []);
+  const [editingOrder, setEditingOrder] = useState<string | null>(null);
 
   const fetchOrders = async () => {
     try {
@@ -22,7 +33,7 @@ export default function OrdersPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setOrders(data);
+        setOrders(data as Order[]);
       }
     } catch (error) {
       console.error('Failed to fetch orders', error);
@@ -30,6 +41,14 @@ export default function OrdersPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void fetchOrders();
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const updateOrderStatus = async (id: string, newStatus: string) => {
     try {
@@ -42,7 +61,7 @@ export default function OrdersPage() {
         },
         body: JSON.stringify({ status: newStatus })
       });
-      
+
       if (res.ok) {
         setEditingOrder(null);
         fetchOrders();
@@ -65,8 +84,8 @@ export default function OrdersPage() {
     }
   };
 
-  const filteredOrders = orders.filter(o => 
-    o.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+  const filteredOrders = orders.filter(o =>
+    o.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     o.phoneNumber.includes(searchTerm) ||
     o.products.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -80,7 +99,7 @@ export default function OrdersPage() {
           </h2>
           <p className="text-gray-500 font-medium">Manage and confirm orders automatically collected by AI Agents.</p>
         </div>
-        
+
         <div className="relative">
           <Search className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
@@ -102,6 +121,7 @@ export default function OrdersPage() {
                 <th className="px-6 py-4">Client / Agent</th>
                 <th className="px-6 py-4">Products</th>
                 <th className="px-6 py-4">Delivery Address</th>
+                <th className="px-6 py-4">Total</th>
                 <th className="px-6 py-4">Status</th>
                 <th className="px-6 py-4 text-right">Actions</th>
               </tr>
@@ -109,11 +129,11 @@ export default function OrdersPage() {
             <tbody className="divide-y divide-gray-50">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-gray-500 font-medium">Loading orders...</td>
+                  <td colSpan={7} className="px-6 py-8 text-center text-gray-500 font-medium">Loading orders...</td>
                 </tr>
               ) : filteredOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-gray-500 font-medium">No orders found.</td>
+                  <td colSpan={7} className="px-6 py-8 text-center text-gray-500 font-medium">No orders found.</td>
                 </tr>
               ) : (
                 filteredOrders.map((order) => (
@@ -125,7 +145,8 @@ export default function OrdersPage() {
                       <div className="text-xs text-gray-400 mt-1">{new Date(order.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="font-bold text-gray-700">{order.client?.name || 'Unknown Client'}</div>
+                      {/* Fixed: was order.client?.name, which doesn't exist on the Client model */}
+                      <div className="font-bold text-gray-700">{order.client?.ownerName || 'Unknown Client'}</div>
                       <div className="text-xs text-gray-400">{order.client?.companyName || ''}</div>
                     </td>
                     <td className="px-6 py-4">
@@ -137,6 +158,31 @@ export default function OrdersPage() {
                       <div className="text-sm text-gray-600 max-w-xs truncate" title={order.address}>
                         {order.address}
                       </div>
+                      {order.distanceKm != null && (
+                        <div className="text-xs text-gray-400 mt-1">{Number(order.distanceKm).toFixed(1)} km away</div>
+                      )}
+                    </td>
+                    <td className="px-6 py-4">
+                      {order.total != null ? (
+                        <div>
+                          <div className="font-bold text-[#0a1142]">${Number(order.total).toFixed(2)}</div>
+                          {order.deliveryCharge != null && (
+                            <div className="text-xs text-gray-400">incl. ${Number(order.deliveryCharge).toFixed(2)} delivery</div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400 italic">Not calculated</span>
+                      )}
+                      {order.invoiceUrl && (
+                        <a
+                          href={order.invoiceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center text-xs font-bold text-blue-600 hover:text-blue-800 mt-1"
+                        >
+                          <FileText className="w-3.5 h-3.5 mr-1" /> View Invoice
+                        </a>
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       {getStatusBadge(order.status)}
@@ -144,7 +190,7 @@ export default function OrdersPage() {
                     <td className="px-6 py-4 text-right">
                       {editingOrder === order.id ? (
                         <div className="flex flex-col items-end gap-2">
-                          <select 
+                          <select
                             className="text-sm border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[#d51381]/50 font-medium"
                             defaultValue={order.status}
                             onChange={(e) => updateOrderStatus(order.id, e.target.value)}
@@ -153,7 +199,7 @@ export default function OrdersPage() {
                             <option value="CONFIRMED">CONFIRMED</option>
                             <option value="CANCELED">CANCELED</option>
                           </select>
-                          <button 
+                          <button
                             onClick={() => setEditingOrder(null)}
                             className="text-xs text-gray-400 hover:text-gray-600 font-bold"
                           >
@@ -161,7 +207,7 @@ export default function OrdersPage() {
                           </button>
                         </div>
                       ) : (
-                        <button 
+                        <button
                           onClick={() => setEditingOrder(order.id)}
                           className="text-[#d51381] hover:bg-pink-50 p-2 rounded-lg transition-colors flex items-center ml-auto font-bold text-sm"
                         >

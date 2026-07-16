@@ -9,7 +9,6 @@ export const createOrder = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Client ID is required' });
     }
 
-    // @ts-ignore
     const order = await prisma.order.create({
       data: {
         clientId,
@@ -31,19 +30,19 @@ export const createOrder = async (req: Request, res: Response) => {
 
 export const getOrders = async (req: Request, res: Response) => {
   try {
-    // If the super admin wants to see all orders, they don't pass clientId.
-    // If we want to filter by client, we pass clientId in query.
     const { clientId } = req.query;
-    
+
     let whereClause = {};
     if (clientId) {
       whereClause = { clientId: String(clientId) };
     }
 
-    // @ts-ignore
+    // NOTE: the original code selected `client.name`, which does not exist
+    // on the Client model (it's `ownerName` / `companyName`) — this was
+    // silently throwing on every request. Fixed below.
     const orders = await prisma.order.findMany({
       where: whereClause,
-      include: { client: { select: { name: true, companyName: true } } },
+      include: { client: { select: { ownerName: true, companyName: true } } },
       orderBy: { createdAt: 'desc' }
     });
 
@@ -59,9 +58,14 @@ export const updateOrder = async (req: Request, res: Response) => {
     const { id } = req.params;
     const updates = req.body;
 
-    // @ts-ignore
+    if (!id) {
+      return res.status(400).json({ message: 'Order ID is required' });
+    }
+
+    const orderId = Array.isArray(id) ? id[0] : id;
+
     const order = await prisma.order.update({
-      where: { id },
+      where: { id: orderId },
       data: updates
     });
 
@@ -74,11 +78,17 @@ export const updateOrder = async (req: Request, res: Response) => {
 
 export const deleteOrder = async (req: Request, res: Response) => {
   try {
+
     const { id } = req.params;
 
-    // @ts-ignore
+    if (!id) {
+      return res.status(400).json({ message: 'Order ID is required' });
+    }
+
+    const orderId = Array.isArray(id) ? id[0] : id;
+
     await prisma.order.delete({
-      where: { id }
+      where: { id: orderId }
     });
 
     res.json({ message: 'Order deleted successfully' });

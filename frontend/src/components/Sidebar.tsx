@@ -3,17 +3,18 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { 
-  LayoutDashboard, 
-  Users, 
-  MessageCircle, 
-  CreditCard, 
-  Activity, 
-  BookOpen, 
-  PhoneCall, 
+import {
+  LayoutDashboard,
+  Users,
+  MessageCircle,
+  CreditCard,
+  Activity,
+  BookOpen,
+  PhoneCall,
   Settings,
   LogOut,
-  ShoppingCart
+  ShoppingCart,
+  Package
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -53,8 +54,12 @@ export default function Sidebar({ role }: SidebarProps) {
     { name: 'Leads', href: '/dashboard/leads', icon: PhoneCall },
   ];
 
+  // NEW: Products + Contacts & Whitelist added for clients — this is what
+  // powers "client manages their own products / whitelist from their portal".
   const clientLinks = [
     { name: 'Dashboard', href: '/client-portal', icon: LayoutDashboard },
+    { name: 'Products', href: '/client-portal/products', icon: Package },
+    { name: 'Contacts & Whitelist', href: '/client-portal/contacts', icon: Users },
     { name: 'Knowledge Base', href: '/client-portal/knowledge-base', icon: BookOpen },
     { name: 'Leads', href: '/client-portal/leads', icon: PhoneCall },
     { name: 'WhatsApp Connect', href: '/client-portal/whatsapp', icon: MessageCircle },
@@ -62,7 +67,7 @@ export default function Sidebar({ role }: SidebarProps) {
   ];
 
   const getLinks = () => {
-    switch(role) {
+    switch (role) {
       case 'SUPER_ADMIN': return superAdminLinks;
       case 'MANAGER': return managerLinks;
       case 'SUPPORT': return supportLinks;
@@ -83,14 +88,14 @@ export default function Sidebar({ role }: SidebarProps) {
         {links.map((link) => {
           const Icon = link.icon;
           const isActive = pathname === link.href || pathname.startsWith(`${link.href}/`);
-          
+
           return (
-            <Link 
-              key={link.name} 
+            <Link
+              key={link.name}
               href={link.href}
               className={`flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 font-medium ${
-                isActive 
-                  ? 'bg-gradient-to-r from-[#0a1142] to-[#1a2575] text-white shadow-md shadow-blue-900/20' 
+                isActive
+                  ? 'bg-gradient-to-r from-[#0a1142] to-[#1a2575] text-white shadow-md shadow-blue-900/20'
                   : 'text-gray-600 hover:text-[#d51381] hover:bg-pink-50'
               }`}
             >
@@ -102,7 +107,7 @@ export default function Sidebar({ role }: SidebarProps) {
       </div>
 
       <div className="p-4 border-t border-gray-100">
-        <button 
+        <button
           onClick={handleLogout}
           className="flex items-center w-full space-x-3 px-4 py-3 rounded-xl text-gray-600 font-medium hover:text-red-600 hover:bg-red-50 transition-all duration-200"
         >

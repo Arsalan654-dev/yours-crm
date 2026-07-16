@@ -7,19 +7,20 @@ import {
   deleteClient,
   getClientSettings,
   updateClientSettings,
-  getClientDashboardStats
+  getClientDashboardStats,
+  geocodeOriginAddress
 } from '../controllers/clientController';
 import { authenticateToken, requireSuperAdmin } from '../middlewares/authMiddleware';
 
 const router = express.Router();
 
-// All client routes require authentication
 router.use(authenticateToken);
 
 // Client Portal Routes (accessible by the client themselves)
 router.get('/portal/dashboard', getClientDashboardStats);
 router.get('/portal/settings', getClientSettings);
 router.put('/portal/settings', updateClientSettings);
+router.post('/portal/geocode-origin', geocodeOriginAddress);
 
 // Only Super Admins can manage clients globally
 router.post('/', requireSuperAdmin, createClient);

@@ -2,26 +2,26 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import axios from 'axios';
 import prisma from '../prismaClient';
+const prismaAny = prisma as any;
+import { geocodeAddress } from '../services/geocodingService';
 
 export const createClient = async (req: Request, res: Response) => {
   try {
     const {
       companyName, ownerName, email, phoneNumber, address, password,
-      instanceName, evolutionApiUrl, evolutionApiKey, initialKnowledgeBase
+      instanceName, evolutionApiUrl, evolutionApiKey, initialKnowledgeBase,
+      originLat, originLng, originAddress
     } = req.body;
 
-    // Validation
     if (!email || !password || !companyName || !ownerName || !instanceName) {
       return res.status(400).json({ message: 'Missing required fields' });
     }
 
-    // Check if user already exists
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) {
       return res.status(400).json({ message: 'User with this email already exists' });
     }
 
-    // Attempt to create instance on Evolution API
     let evolutionData: any = null;
     try {
       const evoResponse = await axios.post(
@@ -41,21 +41,16 @@ export const createClient = async (req: Request, res: Response) => {
       evolutionData = evoResponse.data;
     } catch (evoError: any) {
       console.error('Evolution API Error:', evoError.response?.data || evoError.message);
-      // Proceed with client creation even if Evolution API fails. 
-      // The user can configure/reconnect the instance later from the Config AI page.
     }
 
-    // Generate unique API Key for the specific instance from Evolution if provided, else fallback
     const specificApiKey = evolutionData?.hash?.apikey || evolutionApiKey;
 
     const startDate = new Date();
     const endDate = new Date();
-    endDate.setDate(startDate.getDate() + 30); // Default 30 day trial
+    endDate.setDate(startDate.getDate() + 30);
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create client and user in transaction
     const result = await prisma.$transaction(async (tx) => {
       const client = await tx.client.create({
         data: {
@@ -72,8 +67,11 @@ export const createClient = async (req: Request, res: Response) => {
           instanceName,
           instanceId: evolutionData?.instance?.instanceId || null,
           evolutionApiUrl,
-          evolutionApiKey: specificApiKey
-        }
+          evolutionApiKey: specificApiKey,
+          originLat: originLat ? parseFloat(originLat) : undefined,
+          originLng: originLng ? parseFloat(originLng) : undefined,
+          originAddress: originAddress || undefined,
+        } as any
       });
 
       const user = await tx.user.create({
@@ -92,8 +90,9 @@ export const createClient = async (req: Request, res: Response) => {
           instanceName,
           isActive: true,
           status: 'ONLINE',
+          disabledBySuperAdmin: false,
           timezone: 'UTC'
-        }
+        } as any
       });
 
       if (initialKnowledgeBase && initialKnowledgeBase.trim() !== '') {
@@ -110,7 +109,7 @@ export const createClient = async (req: Request, res: Response) => {
 
       await tx.auditLog.create({
         data: {
-          userId: user.id, // technically the SuperAdmin is doing this, but we'll log it here or as system
+          userId: user.id,
           action: 'CLIENT_CREATED',
           details: `Client ${companyName} and instance ${instanceName} provisioned.`
         }
@@ -131,9 +130,11 @@ export const getClients = async (req: Request, res: Response) => {
     const clients = await prisma.client.findMany({
       include: {
         _count: {
-          select: { leads: true, knowledgeBases: true }
-        }
-      }
+          select: { leads: true, knowledgeBases: true, products: true }
+        },
+        // @ts-ignore
+        agentConfig: true
+      } as any
     });
     res.json(clients);
   } catch (error) {
@@ -149,9 +150,11 @@ export const getClientById = async (req: Request, res: Response) => {
       where: { id },
       include: {
         _count: {
-          select: { leads: true, knowledgeBases: true }
-        }
-      }
+          select: { leads: true, knowledgeBases: true, products: true }
+        },
+        // @ts-ignore
+        agentConfig: true
+      } as any
     });
 
     if (!client) {
@@ -168,7 +171,14 @@ export const getClientById = async (req: Request, res: Response) => {
 export const updateClient = async (req: Request, res: Response) => {
   try {
     const id = req.params.id as string;
-    const updates = req.body;
+    const updates = { ...req.body };
+
+    if (updates.originLat !== undefined) updates.originLat = parseFloat(updates.originLat);
+    if (updates.originLng !== undefined) updates.originLng = parseFloat(updates.originLng);
+
+    // These belong to AgentConfig, not Client — strip them out if present
+    // so `prisma.client.update` doesn't throw on unknown fields.
+    delete updates.agentConfig;
 
     const client = await prisma.client.update({
       where: { id },
@@ -186,13 +196,10 @@ export const deleteClient = async (req: Request, res: Response) => {
   try {
     const id = req.params.id as string;
 
-    // Delete associated data first
     await prisma.knowledgeBase.deleteMany({ where: { clientId: id } });
-
-    // Delete user
+    await prismaAny.product.deleteMany({ where: { clientId: id } });
     await prisma.user.deleteMany({ where: { clientId: id } });
 
-    // Finally delete client
     const client = await prisma.client.delete({
       where: { id }
     });
@@ -231,7 +238,25 @@ export const updateClientSettings = async (req: Request, res: Response) => {
     const clientId = (req as any).user?.clientId;
     if (!clientId) return res.status(403).json({ message: 'Client ID required' });
 
-    const { companyName, ownerName, phoneNumber, address, defaultAiModel, defaultPrompt, isActive, scheduleEnabled, scheduleStartTime, scheduleEndTime, timezone } = req.body;
+    const {
+      companyName, ownerName, phoneNumber, address, defaultAiModel, defaultPrompt,
+      isActive, scheduleEnabled, scheduleStartTime, scheduleEndTime, timezone,
+      originLat, originLng, originAddress
+    } = req.body;
+
+    // --- SUPER ADMIN KILL SWITCH GUARD ---
+    // If the super admin has disabled this client's bot, the client cannot
+    // flip isActive back to true from their own portal. Any other setting
+    // (company profile, KB, schedule times) can still be changed freely —
+    // only re-ENABLING the bot itself is blocked.
+    if (isActive === true) {
+      const currentConfig = await prisma.agentConfig.findUnique({ where: { id: clientId } as any });
+      if ((currentConfig as any)?.disabledBySuperAdmin) {
+        return res.status(403).json({
+          message: 'Your AI agent has been disabled by the administrator and cannot be re-enabled from here. Please contact support.'
+        });
+      }
+    }
 
     const updatedClient = await prisma.client.update({
       where: { id: clientId },
@@ -241,8 +266,11 @@ export const updateClientSettings = async (req: Request, res: Response) => {
         phoneNumber,
         address,
         defaultAiModel,
-        defaultPrompt
-      }
+        defaultPrompt,
+        originLat: originLat !== undefined ? parseFloat(originLat) : undefined,
+        originLng: originLng !== undefined ? parseFloat(originLng) : undefined,
+        originAddress: originAddress !== undefined ? originAddress : undefined,
+      } as any
     });
 
     // @ts-ignore
@@ -280,7 +308,9 @@ export const getClientDashboardStats = async (req: Request, res: Response) => {
     const totalLeads = await prisma.lead.count({ where: { clientId } });
     const newLeads = await prisma.lead.count({ where: { clientId, status: 'NEW' } });
     const totalKbDocs = await prisma.knowledgeBase.count({ where: { clientId } });
-    
+    const totalProducts = await prismaAny.product.count({ where: { clientId } });
+    const totalOrders = await prismaAny.order.count({ where: { clientId } });
+
     const recentLeads = await prisma.lead.findMany({
       where: { clientId },
       orderBy: { createdAt: 'desc' },
@@ -296,12 +326,50 @@ export const getClientDashboardStats = async (req: Request, res: Response) => {
       totalLeads,
       newLeads,
       totalKbDocs,
+      totalProducts,
+      totalOrders,
       recentLeads,
       botStatus: agentConfig ? agentConfig.status : 'OFFLINE',
-      botActive: agentConfig ? agentConfig.isActive : false
+      botActive: agentConfig ? agentConfig.isActive : false,
+      disabledBySuperAdmin: (agentConfig as any)?.disabledBySuperAdmin || false,
     });
   } catch (error) {
     console.error('Error fetching dashboard stats:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+/**
+ * Auto-detects lat/lng for the client's business address using Google
+ * Geocoding, and saves it as the origin point used for delivery-distance
+ * calculations on every order. Call this from the Settings page whenever
+ * the client sets/changes their address.
+ */
+export const geocodeOriginAddress = async (req: Request, res: Response) => {
+  try {
+    const clientId = (req as any).user?.clientId;
+    if (!clientId) return res.status(403).json({ message: 'Client ID required' });
+
+    const { address } = req.body;
+    if (!address || !address.trim()) {
+      return res.status(400).json({ message: 'address is required' });
+    }
+
+    const point = await geocodeAddress(address);
+    if (!point) {
+      return res.status(422).json({
+        message: 'Could not geocode this address. Check GOOGLE_MAPS_API_KEY is configured, or enter coordinates manually.'
+      });
+    }
+
+    const client = await prisma.client.update({
+      where: { id: clientId },
+      data: { originLat: point.lat, originLng: point.lng, originAddress: address } as any
+    });
+
+    res.json({ originLat: point.lat, originLng: point.lng, originAddress: address, client });
+  } catch (error) {
+    console.error('geocodeOriginAddress error:', error);
+    res.status(500).json({ message: 'Server error geocoding address' });
   }
 };

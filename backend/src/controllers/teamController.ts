@@ -66,7 +66,11 @@ export const createTeamMember = async (req: Request, res: Response) => {
 
 export const deleteTeamMember = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+    if (!id) {
+      return res.status(400).json({ message: 'Missing team member id' });
+    }
 
     // Prevent deleting the last super admin, though for MVP just simple delete is fine
     await prisma.user.delete({

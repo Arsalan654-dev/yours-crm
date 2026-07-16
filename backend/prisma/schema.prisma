@@ -4,10 +4,9 @@ generator client {
 
 datasource db {
   provider = "mongodb"
-  url = env("DATABASE_URL")
+  url      = env("DATABASE_URL")
 }
 
-// Enums ko MongoDB support karta hai Prisma 5+ mein
 enum Role {
   SUPER_ADMIN
   CLIENT
@@ -56,92 +55,107 @@ enum OrderStatus {
 }
 
 model User {
-  id String @id @default(auto()) @map("_id") @db.ObjectId
-  email String @unique
-  password String
-  role Role @default(CLIENT)
-  clientId String? @db.ObjectId
-  client Client? @relation(fields: [clientId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  twoFactorEnabled Boolean @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  auditLogs AuditLog[]
+  id               String     @id @default(auto()) @map("_id") @db.ObjectId
+  email            String     @unique
+  password         String
+  role             Role       @default(CLIENT)
+  clientId         String?    @db.ObjectId
+  client           Client?    @relation(fields: [clientId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  twoFactorEnabled Boolean    @default(false)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  auditLogs        AuditLog[]
 }
 
 model Client {
-  id String @id @default(auto()) @map("_id") @db.ObjectId
-  companyName String
-  ownerName String
-  email String @unique
-  phoneNumber String?
-  address String?
-  
+  id           String  @id @default(auto()) @map("_id") @db.ObjectId
+  companyName  String
+  ownerName    String
+  email        String  @unique
+  phoneNumber  String?
+  address      String?
+
   // Subscription info
   subscriptionStartDate DateTime?
-  subscriptionEndDate DateTime?
-  subscriptionDays Int @default(0)
-  amountCharged Float @default(0.0)
-  paymentStatus PaymentStatus @default(UNPAID)
-  status ClientStatus @default(ACTIVE)
-  
+  subscriptionEndDate   DateTime?
+  subscriptionDays      Int           @default(0)
+  amountCharged         Float         @default(0.0)
+  paymentStatus         PaymentStatus @default(UNPAID)
+  status                ClientStatus  @default(ACTIVE)
+
   // Evolution API
-  instanceName String?
-  instanceId String?
+  instanceName    String?
+  instanceId      String?
   evolutionApiUrl String?
   evolutionApiKey String?
-  n8nWebhookUrl String?
-  
+  n8nWebhookUrl   String?
+
   // AI Config
-  defaultAiModel String @default("gpt-4o-mini")
-  defaultPrompt String?
-  temperature Float @default(0.7)
-  maxTokens Int @default(500)
-  
+  defaultAiModel String  @default("gemini-2.5-flash")
+  defaultPrompt  String?
+  temperature    Float   @default(0.7)
+  maxTokens      Int     @default(500)
+
+  // NEW: Business origin point for delivery-distance calculation.
+  // Set this from the client's portal (Settings page) — this is the
+  // point deliveries are measured FROM.
+  originLat Float?
+  originLng Float?
+  originAddress String?
+
+  // NEW: master bot enable flag, separate from AgentConfig.isActive,
+  // kept for backwards compatibility with existing code that reads client.botEnabled
+  botEnabled Boolean @default(true)
+
   agentConfig AgentConfig?
-  
-  users User[]
-  knowledgeBases KnowledgeBase[]
-  leads Lead[]
-  orders Order[]
-  invoices Invoice[]
-  
+
+  users             User[]
+  knowledgeBases    KnowledgeBase[]
+  leads             Lead[]
+  orders            Order[]
+  invoices          Invoice[]
+  products          Product[]
+  whitelistContacts WhitelistContact[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model KnowledgeBase {
-  id String @id @default(auto()) @map("_id") @db.ObjectId
-  clientId String @db.ObjectId
-  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  title String
-  type KbType
-  content String? // @db.Text hata diya - MongoDB mein String already unlimited hai
-  category String?
-  fileType String?
-  fileUrl String?
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  clientId  String   @db.ObjectId
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  title     String
+  type      KbType
+  content   String?
+  category  String?
+  fileType  String?
+  fileUrl   String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([clientId])
 }
 
 model Lead {
-  id String @id @default(auto()) @map("_id") @db.ObjectId
-  clientId String @db.ObjectId
-  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  name String
-  phoneNumber String
-  email String?
-  companyName String?
+  id                String    @id @default(auto()) @map("_id") @db.ObjectId
+  clientId          String    @db.ObjectId
+  client            Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name              String
+  phoneNumber       String
+  email             String?
+  companyName       String?
   interestedService String?
-  summary String?
-  potentialValue Float?
-  source String?
-  status LeadStatus @default(NEW)
-  assignedDate DateTime?
-  lastInteraction DateTime?
-  botEnabled Boolean @default(true)
-  
+  summary           String?
+  potentialValue    Float?
+  source            String?
+  status            LeadStatus @default(NEW)
+  assignedDate      DateTime?
+  lastInteraction   DateTime?
+  botEnabled        Boolean    @default(true)
+
   messages Message[]
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -149,68 +163,123 @@ model Lead {
 }
 
 model Message {
-  id String @id @default(auto()) @map("_id") @db.ObjectId
-  leadId String @db.ObjectId
-  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  sender SenderType
-  content String
-  createdAt DateTime @default(now())
+  id        String     @id @default(auto()) @map("_id") @db.ObjectId
+  leadId    String     @db.ObjectId
+  lead      Lead       @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  sender    SenderType
+  content   String
+  createdAt DateTime   @default(now())
 }
 
 model Invoice {
-  id String @id @default(auto()) @map("_id") @db.ObjectId
-  clientId String @db.ObjectId
-  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  invoiceNumber String @unique
-  amount Float
-  paymentDate DateTime?
-  renewalDate DateTime?
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  clientId      String    @db.ObjectId
+  client        Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  invoiceNumber String    @unique
+  amount        Float
+  paymentDate   DateTime?
+  renewalDate   DateTime?
   paymentMethod String?
-  notes String?
-  createdAt DateTime @default(now())
+  notes         String?
+  createdAt     DateTime  @default(now())
 }
 
 model Order {
-  id String @id @default(auto()) @map("_id") @db.ObjectId
-  clientId String @db.ObjectId
-  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  name String
-  phoneNumber String
-  companyName String?
-  products String // JSON string store kar sakte ho
-  address String
-  status OrderStatus @default(PENDING)
+  id            String      @id @default(auto()) @map("_id") @db.ObjectId
+  clientId      String      @db.ObjectId
+  client        Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name          String
+  phoneNumber   String
+  companyName   String?
+  products      String
+  address       String
+  status        OrderStatus @default(PENDING)
+
+  // NEW: financial + delivery breakdown, set by the invoice generation flow
+  subtotal       Float?
+  deliveryCharge Float?
+  distanceKm     Float?
+  total          Float?
+  invoiceUrl     String?
+  invoiceNumber  String?
+
+  // NEW: geocoded delivery point (so distance never has to be recomputed)
+  deliveryLat Float?
+  deliveryLng Float?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([clientId])
 }
 
 model AuditLog {
-  id String @id @default(auto()) @map("_id") @db.ObjectId
-  userId String? @db.ObjectId
-  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
-  action String
-  details String?
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String?  @db.ObjectId
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String
+  details   String?
   ipAddress String?
   createdAt DateTime @default(now())
 }
 
 model AgentConfig {
-  id String @id @default(auto()) @map("_id") @db.ObjectId
-  clientId String @unique @db.ObjectId
-  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  instanceName String?
-  isActive Boolean @default(true)
-  status String @default("ONLINE")
-  scheduleEnabled Boolean @default(false)
-  scheduleStartTime String? 
-  scheduleEndTime String? 
-  timezone String @default("UTC")
+  id                   String   @id @default(auto()) @map("_id") @db.ObjectId
+  clientId             String   @unique @db.ObjectId
+  client               Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  instanceName         String?
+  isActive             Boolean  @default(true)
+  status               String   @default("ONLINE")
+  scheduleEnabled      Boolean  @default(false)
+  scheduleStartTime    String?
+  scheduleEndTime      String?
+  timezone             String   @default("UTC")
+
+  // NEW: Super-admin-only kill switch. When true, the client CANNOT
+  // re-enable their own bot (isActive) from the client portal — only
+  // a SUPER_ADMIN can clear this flag.
+  disabledBySuperAdmin Boolean  @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model GlobalSetting {
-  id String @id @default(auto()) @map("_id") @db.ObjectId
-  key String @unique
+  id    String @id @default(auto()) @map("_id") @db.ObjectId
+  key   String @unique
   value String
+}
+
+// ======================= NEW MODELS =======================
+
+model Product {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  clientId    String   @db.ObjectId
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  price       Float
+  category    String?
+  images      String[] @default([])
+  videos      String[] @default([])
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([clientId])
+}
+
+model WhitelistContact {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  clientId      String   @db.ObjectId
+  client        Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  remoteJid     String
+  name          String?
+  profilePicUrl String?
+  isWhitelisted Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([clientId, remoteJid])
+  @@index([clientId])
 }
